@@ -48,7 +48,3 @@ hirereach/
   content.js      UI panel and all logic (runs on LinkedIn)
   icons/          Extension icons and logo
 ```
-
-## License
-
-MIT
