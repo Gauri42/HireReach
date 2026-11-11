@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "HireReach - LinkedIn HR Outreach Helper",
+  "version": "1.6",
+  "description": "Connections scan kara, HR select kara, message pre-fill hoil. Send tu swatah dabashil.",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
