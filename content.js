@@ -4,18 +4,24 @@
 
   const CONNECTIONS_URL = "https://www.linkedin.com/mynetwork/invite-connect/connections/";
   const CONNECTIONS_PATH = /\/mynetwork\/invite-connect\/connections/;
-  const DEFAULT_CHIPS = [
-    ["HR", 1], ["Human Resources", 1], ["Recruiter", 1], ["Recruitment", 1],
-    ["Talent Acquisition", 1], ["Hiring", 1],
-    ["Talent Partner", 0], ["Staffing", 0], ["Hiring Manager", 0],
-  ];
+  // Quick-pick domains: turning one on adds its keywords to the filter
+  const PACKS = {
+    "HR & Recruiting": ["HR", "Human Resources", "Recruiter", "Recruitment", "Talent Acquisition", "Hiring", "Talent Partner"],
+    "Sales": ["Sales", "Business Development", "Account Executive", "SDR", "Revenue", "Account Manager"],
+    "Marketing": ["Marketing", "Growth", "Brand", "Content", "SEO", "Digital Marketing"],
+    "Engineering": ["Engineer", "Developer", "Software", "Tech Lead", "CTO"],
+    "Product & Design": ["Product Manager", "Product Owner", "Designer", "UX"],
+    "Data & AI": ["Data Scientist", "Data Analyst", "Machine Learning", "AI"],
+    "Finance": ["Finance", "Accountant", "CFO", "Analyst"],
+    "Leadership": ["Founder", "Co-founder", "CEO", "Director", "VP", "Head of"],
+  };
   const DEFAULT_TPL = "Hi {firstName},\n\n";
   const DAILY_SOFT_LIMIT = 30;
   const LABELS = ["Filter", "Matches", "Message", "Send"];
 
   const S = {
     step: 1, min: false,
-    chips: DEFAULT_CHIPS.map(([t, on]) => ({ t, on: !!on })),
+    chips: [], comps: [], excl: [], packs: {},
     tpl: DEFAULT_TPL,
     people: new Map(), rx: [], sel: new Set(),
     scanning: false, stopScan: false, showAll: false, query: "",
@@ -37,13 +43,14 @@
     alert: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
     ok: '<circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
+    tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
     paperclip: '<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/>',
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
     upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   };
-  // Brand mark: chat bubble with a person inside (HR + message)
+  // Brand mark: chat bubble with a person inside (people + message)
   const LOGO_SVG = (size) =>
     `<svg class="lg" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">` +
     `<rect width="48" height="48" rx="12" fill="url(#lgGrad)"/>` +
@@ -135,6 +142,10 @@
     h2{margin:0 0 5px;font-size:18px;font-weight:700;letter-spacing:-.2px}
     .sub{margin:0 0 16px;color:var(--mute);font-size:13px;line-height:1.55}
     .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+    .lbl{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);margin:14px 0 8px}
+    .lbl:first-of-type{margin-top:0}
+    .cx{background:none;border:0;color:inherit;opacity:.55;cursor:pointer;padding:0 0 0 2px;display:inline-flex;align-items:center}
+    .cx:hover{opacity:1}
     .chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #cfd6dd;background:#fff;color:#4a545e;border-radius:18px;padding:6px 13px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
     .chip:hover{border-color:var(--p);color:var(--p)}
     .chip.on{background:var(--pl);border-color:#a9cdf0;color:var(--p)}
@@ -242,7 +253,7 @@
   <div class="fab" id="fab"></div>
   <div class="panel" id="panel">
     <div class="top" id="drag">
-      <div class="brand"><div id="logo"></div><div class="brandtxt"><b>HireReach</b><span>Reach the right HR, faster</span></div></div>
+      <div class="brand"><div id="logo"></div><div class="brandtxt"><b>HireReach</b><span>Reach the right people, faster</span></div></div>
       <button class="x" id="min" title="Minimize"></button>
     </div>
     <div class="stepper" id="stepper"></div>
@@ -294,7 +305,7 @@
 
   // ---------- storage ----------
   const saveCfg = () => {
-    try { chrome.storage.local.set({ chips2: S.chips, tpl2: S.tpl }); } catch (e) {}
+    try { chrome.storage.local.set({ kw3: S.chips, comp3: S.comps, excl3: S.excl, packs3: S.packs, tpl2: S.tpl }); } catch (e) {}
   };
   const RECENT_MS = 2 * 24 * 3600 * 1000;            // "recently messaged" = within the last 2 days
   const saveLog = () => { try { chrome.storage.local.set({ sent3: S.sentLog }); } catch (e) {} };
@@ -310,9 +321,12 @@
     return `Messaged ${d} day${d > 1 ? "s" : ""} ago`;
   };
   try {
-    chrome.storage.local.get(["chips2", "tpl2", "sent3"], (v) => {
+    chrome.storage.local.get(["kw3", "comp3", "excl3", "packs3", "tpl2", "sent3"], (v) => {
       if (v && v.sent3 && typeof v.sent3 === "object") S.sentLog = v.sent3;
-      if (v && Array.isArray(v.chips2) && v.chips2.length) S.chips = v.chips2;
+      if (v && Array.isArray(v.kw3)) S.chips = v.kw3;
+      if (v && Array.isArray(v.comp3)) S.comps = v.comp3;
+      if (v && Array.isArray(v.excl3)) S.excl = v.excl3;
+      if (v && v.packs3 && typeof v.packs3 === "object") S.packs = v.packs3;
       if (v && typeof v.tpl2 === "string") S.tpl = v.tpl2;
       renderAll();
     });
@@ -321,11 +335,29 @@
   // ---------- helpers ----------
   const initials = (n) => n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const buildRx = () =>
-    S.chips.filter((c) => c.on && c.t.trim()).map(
-      (c) => new RegExp("(^|[^a-z0-9])" + esc(c.t.trim()) + "([^a-z0-9]|$)", "i")
-    );
-  const isMatch = (headline) => S.rx.some((r) => r.test(headline));
+  const wordRx = (t) => new RegExp("(^|[^a-z0-9])" + esc(t.trim()) + "([^a-z0-9]|$)", "i");
+  const activeOf = (list) => list.filter((c) => c.on && c.t.trim());
+  const buildRx = () => ({
+    kw: activeOf(S.chips).map((c) => wordRx(c.t)),
+    comp: activeOf(S.comps).map((c) => wordRx(c.t)),
+    ex: activeOf(S.excl).map((c) => wordRx(c.t)),
+  });
+  // keywords: any one; companies: any one (if given); skip words: none
+  const isMatch = (headline) => {
+    const { kw, comp, ex } = S.rx;
+    if (!kw.length && !comp.length) return false;
+    if (kw.length && !kw.some((r) => r.test(headline))) return false;
+    if (comp.length && !comp.some((r) => r.test(headline))) return false;
+    return !ex.some((r) => r.test(headline));
+  };
+  // "Senior Recruiter at Acme | Hiring" -> role "Senior Recruiter", company "Acme"
+  function parseHeadline(hl) {
+    const m = hl.match(/^(.*?)\s+(?:at|@)\s+(.+?)(?:\s*[|\u00b7\u2022,(]|\s+[-\u2013\u2014]\s|$)/i);
+    if (m) return { role: m[1].trim(), company: m[2].trim() };
+    return { role: hl.split(/\s*[|\u00b7\u2022]\s*/)[0].trim(), company: "" };
+  }
+  const fillTpl = (tpl, p) =>
+    tpl.replaceAll("{firstName}", p.first).replaceAll("{company}", p.company || "your company").replaceAll("{role}", p.role || "your field");
   const all = () => [...S.people.values()];
   const matches = () => all().filter((p) => p.match);
   const selected = () => all().filter((p) => S.sel.has(p.key));
@@ -370,7 +402,8 @@
       const headline = lines.find((l) =>
         l !== name && l.length > 3 && !/^connected\s/i.test(l) &&
         !/^(message|remove connection|connection|1st|2nd|3rd)$/i.test(l)) || "";
-      S.people.set(key, { key, name, first: name.split(" ")[0], headline, el: card, match: isMatch(headline) });
+      const pr = parseHeadline(headline);
+      S.people.set(key, { key, name, first: name.split(" ")[0], headline, role: pr.role, company: pr.company, el: card, match: isMatch(headline) });
     });
   }
 
@@ -444,22 +477,38 @@
 
   // ---------- Step 1: Filter ----------
   function step1(body, foot) {
-    const chips = h("div", { class: "chips" });
-    S.chips.forEach((c) =>
-      chips.appendChild(h("button", {
-        class: "chip" + (c.on ? " on" : ""),
-        onclick: () => { c.on = !c.on; saveCfg(); renderAll(); },
-      }, c.on ? icon("check", 13) : null, c.t))
-    );
-    const input = h("input", { type: "text", placeholder: "Talent Partner" });
-    const add = () => {
-      const t = input.value.trim();
-      if (!t) return;
-      const ex = S.chips.find((c) => c.t.toLowerCase() === t.toLowerCase());
-      if (ex) ex.on = true; else S.chips.push({ t, on: true });
+    const togglePack = (name) => {
+      const on = !S.packs[name];
+      S.packs[name] = on;
+      PACKS[name].forEach((k) => {
+        const i = S.chips.findIndex((c) => c.t.toLowerCase() === k.toLowerCase());
+        if (on) { if (i < 0) S.chips.push({ t: k, on: true }); else S.chips[i].on = true; }
+        else if (i >= 0) S.chips.splice(i, 1);
+      });
       saveCfg(); renderAll();
     };
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+    const packs = h("div", { class: "chips" });
+    Object.keys(PACKS).forEach((name) =>
+      packs.appendChild(h("button", { class: "chip" + (S.packs[name] ? " on" : ""), onclick: () => togglePack(name) },
+        S.packs[name] ? icon("check", 13) : null, name)));
+
+    // a chip list with on/off toggle and a remove button, plus an add box
+    const group = (list, placeholder) => {
+      const chips = h("div", { class: "chips", style: "margin-bottom:10px" });
+      list.forEach((c, i) =>
+        chips.appendChild(h("span", { class: "chip" + (c.on ? " on" : "") , onclick: () => { c.on = !c.on; saveCfg(); renderAll(); } },
+          c.t, h("button", { class: "cx", title: "Remove", onclick: (e) => { e.stopPropagation(); list.splice(i, 1); saveCfg(); renderAll(); } }, icon("close", 11)))));
+      const input = h("input", { type: "text", placeholder });
+      const add = () => {
+        const t = input.value.trim();
+        if (!t) return;
+        const ex = list.find((c) => c.t.toLowerCase() === t.toLowerCase());
+        if (ex) ex.on = true; else list.push({ t, on: true });
+        saveCfg(); renderAll();
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+      return h("div", {}, list.length ? chips : "", h("div", { class: "addrow" }, input, h("button", { class: "btn sec", onclick: add }, "Add")));
+    };
 
     if (!onConnectionsPage()) {
       body.append(h("div", { class: "note warn top" }, icon("alert", 16),
@@ -467,16 +516,22 @@
           h("button", { class: "link", onclick: () => (location.href = CONNECTIONS_URL) }, "Open it now"))));
     }
     body.append(
-      h("h2", {}, "Who do you want to message?"),
-      h("p", { class: "sub" }, "Choose the job titles to look for. We'll scan your connections and list only people whose headline matches."),
-      chips,
-      h("div", { class: "addrow" }, input, h("button", { class: "btn sec", onclick: add }, "Add")),
-      note("", "info", "Matching is by whole word, so \u201cHR\u201d matches \u201cHR Manager\u201d but not \u201cHrudaya\u201d.")
+      h("h2", {}, "Who do you want to reach?"),
+      h("p", { class: "sub" }, "Pick a field, or type your own keywords, companies and positions. We scan your connections and list only the people whose headline matches."),
+      h("div", { class: "lbl" }, "Field"),
+      packs,
+      h("div", { class: "lbl" }, "Keywords: job titles, positions, skills"),
+      group(S.chips, "e.g. Sales Manager, Product Owner"),
+      h("div", { class: "lbl" }, "Company"),
+      group(S.comps, "e.g. Google, Infosys"),
+      h("div", { class: "lbl" }, "Skip people whose headline has"),
+      group(S.excl, "e.g. Intern, Student"),
+      note("", "info", "A person matches if their headline has any keyword, works at any listed company (if you add one), and has none of the skip words. Matching is by whole word.")
     );
-    const active = S.chips.filter((c) => c.on).length;
+    const active = activeOf(S.chips).length + activeOf(S.comps).length;
     foot.append(h("button", {
       class: "btn grow", disabled: !active || !onConnectionsPage(), onclick: startScan,
-    }, active ? "Scan connections" : "Select at least one title", active ? icon("right", 16) : null));
+    }, active ? "Scan connections" : "Pick a field or add a keyword", active ? icon("right", 16) : null));
   }
 
   // ---------- Step 2: Scan / Matches ----------
@@ -541,7 +596,7 @@
       list.append(h("div", { class: "empty" },
         all().length ? "No one to show here." : "No connections were found.",
         h("br"),
-        S.showAll ? "" : "Try another search, turn on \u201cShow all connections\u201d, or go back and add job titles."));
+        S.showAll ? "" : "Try another search, turn on \u201cShow all connections\u201d, or go back and add more keywords."));
     }
     vis.forEach((p) => {
       const on = S.sel.has(p.key);
@@ -578,15 +633,15 @@
     const paintPrev = () => {
       const p = selected()[0];
       who.textContent = p ? `Preview for ${p.name}` : "Preview";
-      prev.textContent = S.tpl.replaceAll("{firstName}", p ? p.first : "Rahul") || " ";
+      prev.textContent = fillTpl(S.tpl, p || { first: "Rahul", company: "Acme", role: "Sales Manager" }) || " ";
       const b = $("cont3");
-      if (b) b.disabled = !S.tpl.replace("{firstName}", "").trim();
+      if (b) b.disabled = !S.tpl.replace(/\{(firstName|company|role)\}/g, "").trim();
     };
     ta.addEventListener("input", () => { S.tpl = ta.value; saveCfg(); paintPrev(); });
-    const insert = () => {
+    const insert = (v) => () => {
       const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
-      ta.value = ta.value.slice(0, s) + "{firstName}" + ta.value.slice(e);
-      ta.focus(); ta.selectionStart = ta.selectionEnd = s + 11;
+      ta.value = ta.value.slice(0, s) + v + ta.value.slice(e);
+      ta.focus(); ta.selectionStart = ta.selectionEnd = s + v.length;
       S.tpl = ta.value; saveCfg(); paintPrev();
     };
     const first = selected()[0];
@@ -619,12 +674,14 @@
 
     const composer = h("div", { class: "composer" }, ta,
       h("div", { class: "tools" },
-        h("button", { class: "tool", onclick: insert, title: "Insert the person's first name" }, icon("user", 14), "First name"),
+        h("button", { class: "tool", onclick: insert("{firstName}"), title: "Insert the person's first name" }, icon("user", 14), "First name"),
+        h("button", { class: "tool", onclick: insert("{company}"), title: "Insert their company" }, icon("briefcase", 14), "Company"),
+        h("button", { class: "tool", onclick: insert("{role}"), title: "Insert their job title" }, icon("tag", 14), "Role"),
         h("button", { class: "tool", onclick: () => picker.click(), title: "Attach a file" }, icon("paperclip", 14), "Attach"),
         h("span", { class: "sp" })));
     body.append(
       h("h2", {}, "Write your message"),
-      h("p", { class: "sub" }, `The same message goes to ${S.sel.size} ${S.sel.size === 1 ? "person" : "people"}, personalised with their first name.`),
+      h("p", { class: "sub" }, `The same message goes to ${S.sel.size} ${S.sel.size === 1 ? "person" : "people"}, personalised with {firstName}, {company} and {role}.`),
       composer,
       attBox,
       picker,
@@ -771,7 +828,7 @@
   }
 
   async function openMessage(p) {
-    S.copyText = S.tpl.replaceAll("{firstName}", p.first);
+    S.copyText = fillTpl(S.tpl, p);
     const card = liveCard(p);
     if (!card) return false;
     await closeChats();

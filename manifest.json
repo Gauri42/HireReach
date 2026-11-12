@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "HireReach - LinkedIn HR Outreach Helper",
-  "version": "1.6",
-  "description": "Connections scan kara, HR select kara, message pre-fill hoil. Send tu swatah dabashil.",
+  "name": "HireReach - LinkedIn Outreach Helper",
+  "version": "2.1",
+  "description": "Find the right people in your LinkedIn connections by field, role or company, and message them one by one with your resume attached.",
   "permissions": [
     "storage"
   ],
