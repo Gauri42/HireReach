@@ -27,6 +27,8 @@
     scanning: false, stopScan: false, showAll: false, query: "",
     sending: false, finished: false, queue: [], idx: 0, sendState: "",
     file: null, fileErr: "", attachWarn: false, copyText: "", sentLog: {}, recentNote: "",
+    wr: { mode: "template", purpose: "job", tone: "pro", myName: "", about: "", goal: "", provider: "gemini", model: "", key: "" },
+    gen: {}, genVar: {}, genNote: {}, msgNote: "",
   };
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -142,6 +144,8 @@
     h2{margin:0 0 5px;font-size:18px;font-weight:700;letter-spacing:-.2px}
     .sub{margin:0 0 16px;color:var(--mute);font-size:13px;line-height:1.55}
     .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+    .msgprev{margin-top:12px;background:var(--bg);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;color:#3b4650;max-height:150px;overflow:auto}
+    .prevhead .link{margin-left:auto}
     .lbl{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);margin:14px 0 8px}
     .lbl:first-of-type{margin-top:0}
     .cx{background:none;border:0;color:inherit;opacity:.55;cursor:pointer;padding:0 0 0 2px;display:inline-flex;align-items:center}
@@ -150,9 +154,9 @@
     .chip:hover{border-color:var(--p);color:var(--p)}
     .chip.on{background:var(--pl);border-color:#a9cdf0;color:var(--p)}
     .addrow{display:flex;gap:8px}
-    input[type=text],textarea{width:100%;padding:10px 13px;border:1px solid #cfd6dd;border-radius:10px;font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
-    input[type=text]::placeholder,textarea::placeholder{color:#9aa3ac}
-    input[type=text]:focus,textarea:focus{border-color:var(--p);box-shadow:0 0 0 3px #dcebfa}
+    input[type=text],input[type=password],textarea{width:100%;padding:10px 13px;border:1px solid #cfd6dd;border-radius:10px;font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+    input[type=text]::placeholder,input[type=password]::placeholder,textarea::placeholder{color:#9aa3ac}
+    input[type=text]:focus,input[type=password]:focus,textarea:focus{border-color:var(--p);box-shadow:0 0 0 3px #dcebfa}
     textarea{height:130px;resize:vertical;line-height:1.55}
     .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;background:var(--p);color:#fff;white-space:nowrap;transition:background .15s,box-shadow .15s,transform .05s}
     .btn:hover{background:#0958a8;box-shadow:0 4px 12px rgba(10,102,194,.3)}
@@ -305,7 +309,7 @@
 
   // ---------- storage ----------
   const saveCfg = () => {
-    try { chrome.storage.local.set({ kw3: S.chips, comp3: S.comps, excl3: S.excl, packs3: S.packs, tpl2: S.tpl }); } catch (e) {}
+    try { chrome.storage.local.set({ kw3: S.chips, comp3: S.comps, excl3: S.excl, packs3: S.packs, tpl2: S.tpl, wr4: S.wr }); } catch (e) {}
   };
   const RECENT_MS = 2 * 24 * 3600 * 1000;            // "recently messaged" = within the last 2 days
   const saveLog = () => { try { chrome.storage.local.set({ sent3: S.sentLog }); } catch (e) {} };
@@ -321,7 +325,8 @@
     return `Messaged ${d} day${d > 1 ? "s" : ""} ago`;
   };
   try {
-    chrome.storage.local.get(["kw3", "comp3", "excl3", "packs3", "tpl2", "sent3"], (v) => {
+    chrome.storage.local.get(["kw3", "comp3", "excl3", "packs3", "tpl2", "wr4", "sent3"], (v) => {
+      if (v && v.wr4 && typeof v.wr4 === "object") Object.assign(S.wr, v.wr4);
       if (v && v.sent3 && typeof v.sent3 === "object") S.sentLog = v.sent3;
       if (v && Array.isArray(v.kw3)) S.chips = v.kw3;
       if (v && Array.isArray(v.comp3)) S.comps = v.comp3;
@@ -679,21 +684,89 @@
         h("button", { class: "tool", onclick: insert("{role}"), title: "Insert their job title" }, icon("tag", 14), "Role"),
         h("button", { class: "tool", onclick: () => picker.click(), title: "Attach a file" }, icon("paperclip", 14), "Attach"),
         h("span", { class: "sp" })));
+
+    // --- writing mode: same message for all / Smart writer / AI writer ---
+    const wr = S.wr;
+    const resetGen = () => { S.gen = {}; S.genVar = {}; S.genNote = {}; saveCfg(); };
+    const contOk = () => wr.mode === "template"
+      ? !!S.tpl.replace(/\{(firstName|company|role)\}/g, "").trim()
+      : !!(wr.myName.trim() && wr.about.trim() && (wr.mode !== "ai" || wr.key.trim()));
+    const refreshCont = () => { const b = $("cont3"); if (b) b.disabled = !contOk(); };
+    const modeBar = h("div", { class: "chips", style: "margin-bottom:12px" },
+      [["template", "Same for all"], ["smart", "Smart writer"], ["ai", "AI writer"]].map(([v, l]) =>
+        h("button", { class: "chip" + (wr.mode === v ? " on" : ""), onclick: () => { wr.mode = v; resetGen(); renderAll(); } }, l)));
+    const seg = (key, options) => h("div", { class: "chips" }, options.map(([v, l]) =>
+      h("button", { class: "chip" + (wr[key] === v ? " on" : ""), onclick: () => { wr[key] = v; resetGen(); renderAll(); } }, l)));
+    const inp = (key, placeholder, type = "text") => {
+      const i = h("input", { type, placeholder, value: wr[key] });
+      i.addEventListener("input", () => { wr[key] = i.value; resetGen(); refreshCont(); schedulePreviews(); });
+      return i;
+    };
+
+    const prevBox = h("div", {});
+    const warnBox = h("div", {});
+    let timer = 0;
+    const schedulePreviews = () => { clearTimeout(timer); timer = setTimeout(paintPreviews, 350); };
+    function paintPreviews() {
+      prevBox.innerHTML = ""; warnBox.innerHTML = "";
+      if (!contOk()) {
+        prevBox.append(h("div", { class: "sub" }, wr.mode === "ai" && wr.myName.trim() && wr.about.trim()
+          ? "Paste your API key to use the AI writer." : "Fill in your name and about you to see previews."));
+        return;
+      }
+      selected().slice(0, 2).forEach((p) => {
+        const out = h("div", { class: "bubble" }, S.gen[p.key] || (wr.mode === "ai" ? "Click Generate to see an AI-written message. This uses your API key." : "Writing..."));
+        const run = async () => {
+          out.textContent = "Writing...";
+          out.textContent = await composeFor(p);
+          warnBox.innerHTML = "";
+          if (S.msgNote) warnBox.append(note("warn", "alert", S.msgNote));
+        };
+        const again = () => { delete S.gen[p.key]; delete S.genNote[p.key]; S.genVar[p.key] = (S.genVar[p.key] || 0) + 1; run(); };
+        prevBox.append(
+          h("div", { class: "prevhead" }, avatar(p.name, true), h("span", {}, `Preview for ${p.name}`),
+            h("button", { class: "link", onclick: again }, wr.mode === "ai" ? "Generate" : "Write another")),
+          out);
+        if (wr.mode === "smart" && !S.gen[p.key]) run();
+      });
+    }
+
+    const aiBox = h("div", {},
+      h("div", { class: "lbl" }, "AI service"),
+      seg("provider", [["gemini", "Google Gemini"], ["anthropic", "Anthropic Claude"]]),
+      h("div", { class: "lbl" }, "API key"),
+      inp("key", "Paste your key", "password"),
+      h("div", { class: "lbl" }, "Model"),
+      inp("model", wr.provider === "gemini" ? "Leave empty for gemini-2.5-flash" : "Leave empty for claude-haiku-5-5"),
+      note("", "info", "Your key is saved only in this browser. To write a message, only your details above and that person's headline are sent to the service you chose. If the AI fails, the Smart writer is used."));
+    const writerPanel = h("div", {},
+      h("div", { class: "lbl" }, "Your name"), inp("myName", "e.g. Riya"),
+      h("div", { class: "lbl" }, "Purpose"), seg("purpose", [["job", "Job search"], ["net", "Networking"], ["sales", "Sales pitch"]]),
+      h("div", { class: "lbl" }, wr.purpose === "sales" ? "What you offer, in one sentence" : "About you"),
+      inp("about", wr.purpose === "sales" ? "e.g. I help teams automate repetitive outreach" : "e.g. a Computer Science graduate with full-stack experience"),
+      ...(wr.purpose === "job" ? [h("div", { class: "lbl" }, "Looking for"), inp("goal", "e.g. software roles")] : []),
+      h("div", { class: "lbl" }, "Tone"), seg("tone", [["pro", "Professional"], ["friendly", "Friendly"], ["short", "Short"]]),
+      wr.mode === "ai" ? aiBox : "");
+
     body.append(
       h("h2", {}, "Write your message"),
-      h("p", { class: "sub" }, `The same message goes to ${S.sel.size} ${S.sel.size === 1 ? "person" : "people"}, personalised with {firstName}, {company} and {role}.`),
-      composer,
+      h("p", { class: "sub" }, wr.mode === "template"
+        ? `The same message goes to ${S.sel.size} ${S.sel.size === 1 ? "person" : "people"}, personalised with {firstName}, {company} and {role}.`
+        : "Each person gets their own message, written from their headline. Review it in the chat before it is sent."),
+      modeBar,
+      wr.mode === "template" ? composer : writerPanel,
       attBox,
       picker,
-      h("div", { class: "prevhead" }, first ? avatar(first.name, true) : null, who),
-      prev
+      wr.mode === "template"
+        ? h("div", {}, h("div", { class: "prevhead" }, first ? avatar(first.name, true) : null, who), prev)
+        : h("div", {}, h("div", { class: "lbl" }, "Preview"), prevBox, warnBox)
     );
     if (S.file) body.append(h("div", { class: "att mini" }, h("span", { class: "fi" }, icon("paperclip", 15)), h("div", { class: "info" }, h("div", { class: "fn" }, S.file.name))));
     foot.append(
       h("button", { class: "btn sec", onclick: () => go(2) }, "Back"),
-      h("button", { class: "btn grow", id: "cont3", onclick: () => go(4) }, "Continue")
+      h("button", { class: "btn grow", id: "cont3", disabled: !contOk(), onclick: () => go(4) }, "Continue")
     );
-    paintPrev();
+    if (wr.mode === "template") paintPrev(); else paintPreviews();
   }
 
   // ---------- Step 4: Send ----------
@@ -703,7 +776,7 @@
         icon("ok", 48),
         h("h2", { style: "margin-top:12px" }, "All done"),
         h("p", { class: "sub" }, "You've gone through everyone on your list.")));
-      foot.append(h("button", { class: "btn grow", onclick: () => { S.finished = false; S.sending = false; setSide("right"); go(1); } }, "Start a new batch"));
+      foot.append(h("button", { class: "btn grow", onclick: () => { S.finished = false; S.sending = false; S.gen = {}; S.genVar = {}; S.genNote = {}; setSide("right"); go(1); } }, "Start a new batch"));
       return;
     }
     if (!S.sending) {
@@ -764,6 +837,8 @@
       up.length ? h("div", { class: "upl" }, "Up next", up.map((u) => h("div", { class: "next" }, avatar(u.name, true), u.name))) : "",
       h("div", { class: "upl" }, "Tip: drag the header if this panel covers the chat box.")
     );
+    if (S.sendState === "ready" && S.copyText) body.append(h("div", { class: "msgprev" }, S.copyText));
+    if (S.msgNote) body.append(note("warn", "alert", S.msgNote));
     foot.append(
       h("button", { class: "btn danger", onclick: stopSend }, "Stop"),
       h("button", { class: "btn sec", onclick: advance }, "Skip"),
@@ -827,8 +902,32 @@
     return last && /^(today|yesterday)$/i.test(last) ? last.toLowerCase() : "";
   }
 
+  // ----- message writing (see writer.js) -----
+  const writerOpts = () => ({
+    myName: S.wr.myName.trim(), about: S.wr.about.trim(), offer: S.wr.about.trim(), goal: S.wr.goal.trim(),
+    purpose: S.wr.purpose, tone: S.wr.tone, attach: !!S.file,
+    provider: S.wr.provider, apiKey: S.wr.key.trim(), model: S.wr.model.trim(),
+  });
+  // One message per person. Cached so what you preview is what gets sent.
+  async function composeFor(p) {
+    const W = self.HR_WRITER, wr = S.wr;
+    S.msgNote = "";
+    if (wr.mode === "template" || !W) return fillTpl(S.tpl, p);
+    if (S.gen[p.key]) { S.msgNote = S.genNote[p.key] || ""; return S.gen[p.key]; }
+    const o = writerOpts();
+    let text = "";
+    if (wr.mode === "ai") {
+      const r = await W.ai(o, p);
+      if (r.ok) text = r.text;
+      else S.genNote[p.key] = S.msgNote = `AI writer failed (${r.error}). The Smart writer was used instead.`;
+    }
+    if (!text) text = W.smart(p, o, S.genVar[p.key] || 0);
+    S.gen[p.key] = text;
+    return text;
+  }
+
   async function openMessage(p) {
-    S.copyText = fillTpl(S.tpl, p);
+    S.copyText = await composeFor(p);
     const card = liveCard(p);
     if (!card) return false;
     await closeChats();
