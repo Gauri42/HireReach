@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HireReach - LinkedIn Outreach Helper",
-  "version": "2.1",
+  "version": "2.2",
   "description": "Find the right people in your LinkedIn connections by field, role or company, and message them one by one with your resume attached.",
   "permissions": [
     "storage"
@@ -12,6 +12,7 @@
         "https://www.linkedin.com/*"
       ],
       "js": [
+        "writer.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -21,5 +22,12 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.anthropic.com/*"
+  ]
 }
